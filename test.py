@@ -15,8 +15,13 @@ consts = np.array([Ax, Bz, Cy])
 uconsts = consts
 
 a = pyrotations.Model(consts, uconsts, mu, jmin, jmax, T, lims, width, shift)
-a.newcalcspectrum()
-a.plot()
+pyrotsdipole = a.ops.dipole
+
+data = np.load('dmsrotdipole.npz')
+dmsrotdipole = data['arr_0']
+
+print('here')
+
 
 
 
