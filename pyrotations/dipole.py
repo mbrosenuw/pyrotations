@@ -4,7 +4,7 @@ import time
 from scipy.linalg import block_diag
 import os
 from scipy.sparse import csr_matrix
-from . import rotsymmetrize as sym
+from pyrotations import rotsymmetrize as sym
 from importlib.util import find_spec
 import importlib.resources as res  # requires Python >=3.7
 

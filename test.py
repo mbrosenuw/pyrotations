@@ -1,4 +1,4 @@
-import pyrotations
+from pyrotations import pyrotations
 import numpy as np
 from scipy.sparse import issparse
 import pandas as pd

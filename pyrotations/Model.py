@@ -2,9 +2,8 @@ from .rotham import rotation as ham
 from .boltzmann import getdenom, boltzmann
 import numpy as np
 import pandas as pd
-from scipy.sparse import csr_matrix
 from .timing import timing
-from pyrotations import plib
+from . import plib
 
 
 class Model():
