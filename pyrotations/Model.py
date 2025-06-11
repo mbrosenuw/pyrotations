@@ -8,8 +8,101 @@ from pyrotations import plib
 
 
 class Model():
+    """
+    Rotational spectroscopy model for simulating rovibrational transitions using asymmetric top Hamiltonians.
+
+    Parameters
+    ----------
+    lconsts : np.array of float
+        Rotational constants (A'', B'', C'') for the lower vibrational state [cm^-1].
+    uconsts : np.array of float
+        Rotational constants (A', B', C') for the upper vibrational state [cm^-1].
+    mu : np.array of float
+        Dipole moment components along the a-, b-, and c-principal axes [rel].
+    jmin : int
+        Minimum total angular momentum quantum number J to include in the calculation.
+    jmax : int
+        Maximum total angular momentum quantum number J to include in the calculation.
+    T : float
+        Temperature in Kelvin for computing Boltzmann populations.
+    lims : np.array of float
+        Frequency axis limits for plotting the computed spectrum [cm^-1].
+    width : float
+        Full width at half maximum (FWHM) for the spectral lineshape [cm^-1].
+    shift : float
+        Band origin or vibrational transition energy [cm^-1].
+    stats : list of int, optional
+        Nuclear spin statistical weights for each irreducible representation (e.g., [ee,eo,oe,oo]).
+        Default is [1, 1, 1, 1].
+
+    Attributes
+    ----------
+    ops : rotation
+        Rotation object containing all state-resolved Hamiltonian and dipole data.
+
+        ops.lsubham : subham
+            Hamiltonian and operator data for the lower vibrational state.
+            - wfns : csr_matrix
+                Eigenfunctions matrix for the lower Hamiltonian.
+            - energies : np.ndarray
+                Eigenenergies for each lower state.
+            - Htot : csr_matrix
+                Diagonal matrix of eigenenergies.
+            - ja, jb, jc : csr_matrix
+                Angular momentum operator matrices in the eigenbasis.
+            - I : csr_matrix
+                Identity operator matrix.
+            - diagbasis : list[tuple[int, int, str]]
+                Indexed quantum numbers (i, J, Γ) of diagonal states.
+            - basis : list[tuple[int, int, str]]
+                Symmetry-adapted angular momentum basis (J, K, Γ).
+
+        ops.usubham : subham
+            Same structure as `lsubham`, but for the upper vibrational state.
+
+        ops.dipole : csr_matrix
+            Matrix representation of transition dipole operator between lower and upper states.
+
+    spectrum : pd.DataFrame
+        DataFrame storing transition information (created by `newcalcspectrum()`):
+            - frequency : float
+                Transition frequency [cm^{-1}].
+            - intensity : float
+                Transition intensity based on dipole moment and Boltzmann factor.
+            - lower_state : tuple[int, int, str]
+                Quantum labels of the initial (lower) state (idx, J, \Gamma).
+            - upper_state : tuple[int, int, str]
+                Quantum labels of the final (upper) state (idx, J, \Gamma).
+    """
     def __init__(self, lconsts, uconsts, mu, jmin, jmax, T, lims, width, shift,
                  stats=[1, 1, 1, 1]):
+        """
+        Initialize a rotational spectroscopy model for a rovibrational transition.
+
+        Parameters
+        ----------
+        lconsts : np.array of float
+            Rotational constants (A'', B'', C'') for the lower vibrational state [cm^-1].
+        uconsts : np.array of float
+            Rotational constants (A', B', C') for the upper vibrational state [cm^-1].
+        mu : np.array of float
+            Dipole moment components along the a-, b-, and c-principal axes [rel].
+        jmin : int
+            Minimum total angular momentum quantum number J to include in the calculation.
+        jmax : int
+            Maximum total angular momentum quantum number J to include in the calculation.
+        T : float
+            Temperature in Kelvin for computing Boltzmann populations.
+        lims : np.array of float
+            Frequency axis limits for plotting the computed spectrum [cm^-1].
+        width : float
+            Full width at half maximum (FWHM) for the spectral lineshape [cm^-1].
+        shift : float
+            Band origin or vibrational transition energy [cm^-1].
+        stats : list of int, optional
+            Nuclear spin statistical weights for each irreducible representation (e.g., [ee,eo,oe,oo]).
+            Default is [1, 1, 1, 1].
+        """
         for name, value in locals().items():
             if name != "self":
                 setattr(self, name, value)
@@ -36,13 +129,12 @@ class Model():
                     "lower_state": tuple(lower),
                     "upper_state": tuple(upper)
                 })
-            # Create DataFrame from the list of dictionaries
-            # Convert accumulated list to a DataFrame at the end
+
             self.spectrum = pd.DataFrame(spectrum_data)
             self.spectrum["frequency"] = self.spectrum["frequency"].astype("float")
             self.spectrum["intensity"] = self.spectrum["intensity"].astype("float")
             self.spectrum = self.spectrum.sort_values(by="frequency", ascending=True)
-            self.spectrum = self.spectrum[(self.spectrum['intensity'] > self.spectrum['intensity'].max() * 10**(-3))]
+            self.spectrum = self.spectrum[(self.spectrum['intensity'] > self.spectrum['intensity'].max() * 10**(-6))]
             self.spectrum = self.spectrum[
                 (self.spectrum['frequency'] >= self.lims[0]) & (self.spectrum['frequency'] <= self.lims[1])]
             print(len(self.spectrum), ' transitions evaluated.')
@@ -60,41 +152,3 @@ class Model():
         spec, x = plib.stdplotter(self.spectrum, self.lims, self.width, self.shift, title, other)
         return spec, x
 
-
-
-def l0(basis_labels):
-    n = len(basis_labels)
-    l0_indices = [i for i, label in enumerate(basis_labels) if label[1] == 0]
-    m = len(l0_indices)
-    data = np.ones(m)
-    row_indices = l0_indices
-    col_indices = list(range(m))
-    P = csr_matrix((data, (row_indices, col_indices)), shape=(n, m))
-    l0_basis_labels = [basis_labels[i] for i in l0_indices]
-    return P, l0_basis_labels
-
-def op(lPT, uPT, operator, km=None, epsilon=1):
-    if km is None:
-        km = lPT.kmax
-    else:
-        km = min(km, lPT.kmax)
-
-    lWs = [epsilon ** j * lPT.W_list[j] for j in range(km + 1)]
-    uWs = [epsilon ** j * uPT.W_list[j] for j in range(km + 1)]
-
-    O = sum(
-        uWs[l].conj().T @ operator @ lWs[k - l]
-        for k in range(km + 1)
-        for l in range(k + 1)
-    )
-    return O
-
-def getfullblocks(basis):
-    blocks = {}
-    for idx, (m, l, gamma1, p, j, gamma2, gamma0) in enumerate(basis):
-        if (l, j, gamma0) not in blocks:
-            blocks[(l, j, gamma0)] = {"start": idx, "end": idx, "count": 1}
-        else:
-            blocks[(l, j, gamma0)]["end"] = idx
-            blocks[(l, j, gamma0)]["count"] += 1
-    return blocks

@@ -53,6 +53,42 @@ def getH(consts, j):
     return H
 
 class subrotation:
+    """
+    Attributes
+    ----------
+    consts : tuple[float, float, float]
+        Rotational constants (A, B, C) for this vibrational state [cm^-1].
+
+    j : int
+        Total angular momentum quantum number J associated with this block.
+
+    ja : np.ndarray
+        Operator matrix for J_a in the eigenbasis (after symmetry adaptation and diagonalization).
+
+    jb : np.ndarray
+        Operator matrix for J_b in the eigenbasis.
+
+    jc : np.ndarray
+        Operator matrix for J_c in the eigenbasis.
+
+    I : np.ndarray
+        Identity matrix in the symmetrized basis for use in operator construction.
+
+    Hrot : np.ndarray
+        Full rotational Hamiltonian in the symmetry-adapted basis.
+
+    wfns : np.ndarray
+        Matrix whose columns are the eigenvectors of Hrot, block-diagonalized by (J, \Gamma).
+
+    energies : np.ndarray
+        Rotational energy eigenvalues corresponding to each eigenfunction in `wfns`.
+
+    basis : list[tuple[int, int, int]]
+        List of tuples (J, K, \Gamma) labeling the original basis states.
+
+    diagbasis : list[tuple[int, int, int]]
+        List of tuples (i, J, \Gamma) labeling each eigenstate by index and its symmetry.
+    """
     def __init__(self, consts, j):
         self.consts = consts
         self.j = j
@@ -81,6 +117,22 @@ class subrotation:
 
 
 class rotation:
+    """
+    Assembles full lower and upper vibrational-state Hamiltonians over a range of J values,
+    and constructs the transition dipole matrix in the eigenbasis.
+
+    Attributes
+    ----------
+    lsubham : subham
+        Complete rotational Hamiltonian and operator set for the lower vibrational level.
+
+    usubham : subham
+        Complete rotational Hamiltonian and operator set for the upper vibrational level.
+
+    dipole : scipy.sparse.csr_matrix
+        Dipole transition operator in the eigenbasis, constructed from body-frame components
+        and transformed via the eigenvectors of the lower and upper states.
+    """
     def __init__(self, lconsts, uconsts, jmin, jmax, mu):
 
         lsubrots = [subrotation(lconsts, j) for j in range(jmin, jmax+1)]
@@ -88,7 +140,7 @@ class rotation:
         usubrots = [subrotation(uconsts, j) for j in range(jmin, jmax + 1)]
         self.usubham = getfullmatrices(usubrots)
         self.dipole, dipolebasis = getdipole(jmin, jmax, mu)
-        self.dipole = self.usubham.wfns.conj().T @ self.dipole @ self.lsubham.wfns
+        self.dipole = (self.usubham.wfns.conj().T @ self.dipole @ self.lsubham.wfns).tocsr()
 
 
 
@@ -121,10 +173,40 @@ def getfullmatrices(syslist):
     return subham(wfns, energies,Htot, ja, jb, jc, I, diagbasislist, basislist)
 
 class subham:
+    """
+    Container for the full rotational Hamiltonian, eigenvectors, and operators
+    across all J values.
+
+    Attributes
+    ----------
+    wfns : scipy.sparse.csr_matrix
+        Block-diagonal matrix of eigenvectors for each J block.
+
+    energies : np.ndarray
+        Energy eigenvalues corresponding to each eigenfunction in the basis.
+
+    Htot : scipy.sparse.csr_matrix
+        Diagonal Hamiltonian matrix with energy eigenvalues on the diagonal.
+
+    ja : scipy.sparse.csr_matrix
+        Operator matrix for J_a.
+
+    jb : scipy.sparse.csr_matrix
+        Operator matrix for J_b.
+
+    jc : scipy.sparse.csr_matrix
+        Operator matrix for J_c.
+
+    I : scipy.sparse.csr_matrix
+        Block-diagonal identity matrix matching the operator dimensions.
+
+    diagbasis : list[tuple[int, int, int]]
+        List of (index, J, \Gamma) labels for the eigenstates.
+
+    basis : list[tuple[int, int, int]]
+        List of (J, K, \Gamma) labels for the original symmetric top basis states.
+    """
     def __init__(self,wfns, energies,Htot, ja, jb, jc, I, diagbasis, basis):
         for name, value in locals().items():
             if name != "self":
                 setattr(self, name, value)
-
-
-# rotation([1,2,3],[1,2,3], 1,10, [0,1,0])

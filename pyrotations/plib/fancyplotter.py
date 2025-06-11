@@ -1,8 +1,10 @@
 import numpy as np
 import plotly.graph_objects as go
+import plotly.io as pio
+
 
 def fplotter(df, lims, w=0.05, shift = 0,  title="Interactive Spectrum", other = None):
-
+    pio.renderers.default = "browser"
     # Create Plotly figure
     fig = go.Figure()
     __plotspectrum(df, 'Dimethyl Sulfide Code', fig, lims, w, shift, 'red')

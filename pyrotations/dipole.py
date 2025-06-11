@@ -5,6 +5,8 @@ from scipy.linalg import block_diag
 import os
 from scipy.sparse import csr_matrix
 from . import rotsymmetrize as sym
+from importlib.util import find_spec
+import importlib.resources as res  # requires Python >=3.7
 
 
 def tjk(basis, qk):
@@ -61,6 +63,20 @@ def kphase(basis):
     print(f"Kphase matrix generation time: {elapsed_time:.4f} seconds")
     return mat
 
+def get_data_path(filename: str) -> str:
+    """Get the absolute path to a data file inside the pyrotations package."""
+    if find_spec("pyrotations") is not None:
+        try:
+            # Python 3.9+ recommended
+            return str(res.files("pyrotations").joinpath(filename))
+        except AttributeError:
+            # For Python 3.7–3.8 fallback to legacy
+            with res.path("pyrotations", filename) as p:
+                return str(p)
+    else:
+        # fallback: relative path for dev use
+        return os.path.join(os.path.dirname(__file__), filename)
+
 
 # Function to save data to a .npz file
 def save_data(filename, basis, tjk0, tjkm1, tjkp1, rmat, kmat):
@@ -78,7 +94,7 @@ def load_data(filename):
 def getdipole(jmin, jmax, mu):
     jlist = [j for j in range(jmin, jmax + 1)]
     basis = [(j, k) for j in jlist for k in range(-j, j + 1)]
-    filename = './pyrotations/3jsyms_j30.npz'
+    filename = get_data_path("3jsyms_j30.npz")
     if os.path.exists(filename):
         loaded_basis, ltjk0, ltjkm1, ltjkp1, rmat, kmat = load_data(filename)
     else:
