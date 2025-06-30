@@ -6,21 +6,23 @@ import pandas as pd
 # all the constants you would want to use
 mu = [0, 1, 0]  # b axis
 jmin = 0
-jmax = 30
-T = 77
-lims = [-40, 40]
+jmax = 70
+T = 300
+lims = [-60, 60]
 shift = 0
 width = 0.0016
 Ax = 0.186449993466079
 Bz = 0.256805714117702
 Cy = 0.678719102454549
-consts = np.array([Ax, Bz, Cy])
+consts = np.array([Cy, Bz, Ax])
 uconsts = consts
 # uconsts = consts*0.95 #pretend vibrational coupling
 print(uconsts)
 
 # make a rotation object. automatically will calculate and diagonalize the hamiltonian
 DMS = pyrotations.Model(consts, uconsts, mu, jmin, jmax, T, lims, width, shift)
+DMS.newcalcspectrum()
+DMS.plot()
 
 # this is how you can extract matrices (WARNING! USE .toarray() TO MAKE THEM NUMPY)!
 dipole = DMS.ops.dipole

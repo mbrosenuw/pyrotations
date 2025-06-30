@@ -111,7 +111,7 @@ class Model():
         self.ops = ham(self.lconsts,self.uconsts,self.jmin, self.jmax, self.mu)
 
     def newcalcspectrum(self, save=False, name='spectrum'):
-        with timing("Spectrum Calculation") as t:
+        with timing("Calculation spectrum") as t:
             uidxs, lidxs = self.ops.dipole.nonzero()
             couplings = self.ops.dipole.data
             denom = getdenom(self.ops.lsubham.energies, self.T)

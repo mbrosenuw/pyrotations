@@ -2,8 +2,9 @@ import numpy as np
 from . import rotsymmetrize as sym
 from scipy.sparse import csr_matrix
 from scipy.linalg import block_diag
-from .dipole import getdipole as getdipole
+from .dipole2 import getdipole as getdipole
 import scipy.sparse as sp
+from .timing import timing
 
 
 def jsquare(j):
@@ -134,13 +135,17 @@ class rotation:
         and transformed via the eigenvectors of the lower and upper states.
     """
     def __init__(self, lconsts, uconsts, jmin, jmax, mu):
+        with timing('Calculating lower vibrational state rotational Hamiltonian'):
+            lsubrots = [subrotation(lconsts, j) for j in range(jmin, jmax+1)]
+            self.lsubham = getfullmatrices(lsubrots)
 
-        lsubrots = [subrotation(lconsts, j) for j in range(jmin, jmax+1)]
-        self.lsubham = getfullmatrices(lsubrots)
-        usubrots = [subrotation(uconsts, j) for j in range(jmin, jmax + 1)]
-        self.usubham = getfullmatrices(usubrots)
-        self.dipole, dipolebasis = getdipole(jmin, jmax, mu)
-        self.dipole = (self.usubham.wfns.conj().T @ self.dipole @ self.lsubham.wfns).tocsr()
+        with timing('Calculating upper vibrational state rotational Hamiltonian'):
+            usubrots = [subrotation(uconsts, j) for j in range(jmin, jmax + 1)]
+            self.usubham = getfullmatrices(usubrots)
+
+        with timing('Calculating dipole moment matrix'):
+            self.dipole, dipolebasis = getdipole(jmin, jmax, mu)
+            self.dipole = (self.usubham.wfns.conj().T @ self.dipole @ self.lsubham.wfns).tocsr()
 
 
 

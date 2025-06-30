@@ -7,6 +7,8 @@ from scipy.sparse import csr_matrix
 from pyrotations import rotsymmetrize as sym
 from importlib.util import find_spec
 import importlib.resources as res  # requires Python >=3.7
+from .timing import timing
+
 
 
 def tjk(basis, qk):
@@ -88,67 +90,58 @@ def save_data(filename, basis, tjk0, tjkm1, tjkp1, rmat, kmat):
 # Function to load data from a .npz file
 def load_data(filename):
     data = np.load(filename, allow_pickle=True)
-    return data['basis'], data['tjk0'], data['tjkm1'], data['tjkp1'], data['rmat'], data['kmat']
+    return data['basis'], csr_matrix(data['tjk0']), csr_matrix(data['tjkm1']), csr_matrix(data['tjkp1']), csr_matrix(data['rmat']), csr_matrix(data['kmat'])
 
 
 def getdipole(jmin, jmax, mu):
     jlist = [j for j in range(jmin, jmax + 1)]
     basis = [(j, k) for j in jlist for k in range(-j, j + 1)]
-    filename = get_data_path("3jsyms_j30.npz")
+    filename = get_data_path("3jsyms_j70.npz")
     if os.path.exists(filename):
-        loaded_basis, ltjk0, ltjkm1, ltjkp1, rmat, kmat = load_data(filename)
+        with timing('Loading dipole matrix'):
+            loaded_basis, ltjk0, ltjkm1, ltjkp1, rmat, kmat = load_data(filename)
     else:
-        jlist2 = [j for j in range(31)]
-        genbasis = [(j, k) for j in jlist2 for k in range(-j, j + 1)]
-        tjk0 = tjk(genbasis, 0)
-        tjkm1 = tjk(genbasis, -1)
-        tjkp1 = tjk(genbasis, 1)
-        rmat = redmat(genbasis)
-        kmat = kphase(genbasis)
-        save_data(filename, genbasis, tjk0, tjkm1, tjkp1, rmat, kmat)
-        loaded_basis, ltjk0, ltjkm1, ltjkp1, rmat, kmat = load_data(filename)
+        with timing('Generating dipole matrix'):
+            jlist2 = [j for j in range(jmax+1)]
+            genbasis = [(j, k) for j in jlist2 for k in range(-j, j + 1)]
+            tjk0 = tjk(genbasis, 0)
+            tjkm1 = tjk(genbasis, -1)
+            tjkp1 = tjk(genbasis, 1)
+            rmat = redmat(genbasis)
+            kmat = kphase(genbasis)
+            save_data(filename, genbasis, tjk0, tjkm1, tjkp1, rmat, kmat)
+            loaded_basis, ltjk0, ltjkm1, ltjkp1, rmat, kmat = load_data(filename)
 
     loaded_basis = [tuple(pair) for pair in loaded_basis]
     mapmat = np.zeros((len(basis), len(loaded_basis)))
+    if basis != loaded_basis:
+        # Populate the matrix with 1's where elements in userbasis are found in loaded_basis
+        for i, user_elem in enumerate(basis):
+            for j, loaded_elem in enumerate(loaded_basis):
+                if user_elem == loaded_elem:
+                    mapmat[i, j] = 1
 
-    # Populate the matrix with 1's where elements in userbasis are found in loaded_basis
-    for i, user_elem in enumerate(basis):
-        for j, loaded_elem in enumerate(loaded_basis):
-            if user_elem == loaded_elem:
-                mapmat[i, j] = 1
+        mapmat = csr_matrix(mapmat)
+        ltjk0 = mapmat @ ltjk0 @ mapmat.T
+        ltjkm1 = mapmat @ ltjkm1 @ mapmat.T
+        ltjkp1 = mapmat @ ltjkp1 @ mapmat.T
+        rmat = mapmat @ rmat @ mapmat.T
+        kmat = mapmat @ kmat @ mapmat.T
 
-    ltjk0 = mapmat @ ltjk0 @ mapmat.T
-    ltjkm1 = mapmat @ ltjkm1 @ mapmat.T
-    ltjkp1 = mapmat @ ltjkp1 @ mapmat.T
-    rmat = mapmat @ rmat @ mapmat.T
-    kmat = mapmat @ kmat @ mapmat.T
+    with timing('Symmetrizing dipole matrix'):
+        Ts = [a for a, _ in (sym.gettrans(j) for j in jlist)]
+        symbasis = [item for _, a in (sym.gettrans(j) for j in jlist) for item in a]
+        fulltrans = block_diag(*Ts)
 
-
-    Ts = [a for a, _ in (sym.gettrans(j) for j in jlist)]
-    symbasis = [item for _, a in (sym.gettrans(j) for j in jlist) for item in a]
-    fulltrans = block_diag(*Ts)
-
-    dipole = mu[1] * ltjk0 + mu[0] * 1 / 2 * (ltjkp1 - ltjkm1) + mu[2] * 1 / (2j) * (ltjkp1 + ltjkm1)
-    dipole = kmat * rmat * dipole
-    dipole = np.round(fulltrans @ dipole @ fulltrans.T,12)
-    return csr_matrix(dipole), symbasis
-    # return csr_matrix(dipole), basis
-
-def getdipole2(jmin, jmax, mu):
-    jlist2 = [j for j in range(jmin, jmax +1 )]
-    genbasis = [(j, k) for j in jlist2 for k in range(-j, j + 1)]
-    tjk0 = tjk(genbasis, 0)
-    tjkm1 = tjk(genbasis, -1)
-    tjkp1 = tjk(genbasis, 1)
-    rmat = redmat(genbasis)
-    kmat = kphase(genbasis)
-
-
-    Ts = [a for a, _ in (sym.gettrans(j) for j in jlist2)]
-    symbasis = [item for _, a in (sym.gettrans(j) for j in jlist2) for item in a]
-    fulltrans = block_diag(*Ts)
-
-    dipole = mu[1] * tjk0 + mu[0] * 1 / 2 * (tjkp1 - tjkm1) + mu[2] * 1 / (2j) * (tjkp1 + tjkm1)
-    dipole = kmat * rmat * dipole
-    dipole = np.round(fulltrans @ dipole @ fulltrans.T,12)
-    return csr_matrix(dipole), symbasis
+    with timing('Constructing final dipole matrix'):
+        dipole = mu[1] * ltjk0 + mu[0] * 1 / 2 * (ltjkp1 - ltjkm1) + mu[2] * 1 / (2j) * (ltjkp1 + ltjkm1)
+        dipole = kmat.multiply(rmat).multiply(dipole)
+        # Mask for values above threshold
+        fulltrans = csr_matrix(fulltrans)
+        dipole = csr_matrix(dipole)
+        # threshold = 1e-12
+        # mask = np.abs(dipole.data) >= threshold
+        # dipole = dipole.tocoo()
+        # dipole = csr_matrix((dipole.data[mask], (dipole.row[mask], dipole.col[mask])), shape=dipole.shape)
+        dipole = fulltrans @ dipole @ fulltrans.T
+    return dipole, symbasis
